@@ -133,63 +133,63 @@ static bool should_close = false;
 
 LRESULT CALLBACK event_handler(
   HWND window_handle,
-	UINT message,
-	WPARAM w_param,
-	LPARAM l_param
+  UINT message,
+  WPARAM w_param,
+  LPARAM l_param
 ) {
-	INT result = 0;
-	switch (message) {
-		case WM_CLOSE: {
-			should_close = true;
-			DestroyWindow(window_handle);
-		} break;
+  INT result = 0;
+  switch (message) {
+    case WM_CLOSE: {
+      should_close = true;
+      DestroyWindow(window_handle);
+    } break;
 
-		case WM_DESTROY: {
-			PostQuitMessage(0);
-		} break;
+    case WM_DESTROY: {
+      PostQuitMessage(0);
+    } break;
 
-		case WM_KEYDOWN: {
-			if (w_param == VK_ESCAPE) {
-				PostMessage(window_handle, WM_CLOSE, NULL, NULL);
-			}
-		} break;
+    case WM_KEYDOWN: {
+      if (w_param == VK_ESCAPE) {
+        PostMessage(window_handle, WM_CLOSE, NULL, NULL);
+      }
+    } break;
 
-		default: {
-			result = DefWindowProc(window_handle, message, w_param, l_param);
-		}
-	}
-	return result;
+    default: {
+      result = DefWindowProc(window_handle, message, w_param, l_param);
+    }
+  }
+  return result;
 }
 
 HWND create_window(HINSTANCE instance_handle, INT show_flag) {
-	const LPCWSTR class_name = L"8CHIP";
+  const LPCWSTR class_name = L"8CHIP";
 
-	WNDCLASSEX window_class = {};
-	window_class.cbSize = sizeof(WNDCLASSEX);
-	window_class.lpfnWndProc = event_handler;
-	window_class.hInstance = instance_handle;
-	window_class.lpszClassName = class_name;
-	window_class.style = CS_OWNDC;
-	RegisterClassEx(&window_class);
+  WNDCLASSEX window_class = {};
+  window_class.cbSize = sizeof(WNDCLASSEX);
+  window_class.lpfnWndProc = event_handler;
+  window_class.hInstance = instance_handle;
+  window_class.lpszClassName = class_name;
+  window_class.style = CS_OWNDC;
+  RegisterClassEx(&window_class);
 
-	const HWND window_handle = CreateWindowEx(
-		0,
-		class_name,
-		L"8Chip Emulator",
-		WS_POPUP | WS_VISIBLE,
-		0,
-		0,
-		// TODO(steven): Get actual monitor size
-		1920,
-		1080,
-		NULL,
-		NULL,
-		instance_handle,
-		nullptr
-	);
-	assert(window_handle != NULL);
+  const HWND window_handle = CreateWindowEx(
+    0,
+    class_name,
+    L"8Chip Emulator",
+    WS_POPUP | WS_VISIBLE,
+    0,
+    0,
+    // TODO(steven): Get actual monitor size
+    1920,
+    1080,
+    NULL,
+    NULL,
+    instance_handle,
+    nullptr
+  );
+  assert(window_handle != NULL);
 
-	ShowWindow(window_handle, show_flag);
+  ShowWindow(window_handle, show_flag);
   return window_handle;
 }
 
@@ -235,9 +235,9 @@ void render(Cpu *cpu, HWND window_handle, HDC device_context) {
 
 INT WINAPI wWinMain(
   HINSTANCE instance_handle,
-	HINSTANCE prev_instance_handle,
-	PWSTR cmd_args,
-	INT show_flags
+  HINSTANCE prev_instance_handle,
+  PWSTR cmd_args,
+  INT show_flags
 ) {
   HWND window_handle = create_window(instance_handle, show_flags);
   HDC device_context = GetDC(window_handle);
