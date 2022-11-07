@@ -1,135 +1,35 @@
 #include <cassert>
 #include <cstdio>
-#include <cstring>
 #include <errno.h>
 
 #include <Windows.h>
 
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned long u32;
-typedef unsigned long long u64;
+#include "src/cpu.hpp"
+#include "src/instructions.hpp"
+#include "src/types.hpp"
 
-const u8 font_data[] = {
-  0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-  0x20, 0x60, 0x20, 0x20, 0x70, // 1
-  0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-  0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-  0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-  0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-  0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-  0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-  0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-  0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-  0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-  0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-  0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-  0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-  0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-  0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+#define TIMER_INTERVAL 10000000
+#define SIMULATIONS_PER_FRAME 20
+#define SPEED 60
+
+const WCHAR input_map[] = {
+  L'x', // 0
+  L'1', // 1
+  L'2', // 2
+  L'3', // 3
+  L'Q', // 4
+  L'W', // 5
+  L'E', // 6
+  L'A', // 7
+  L'S', // 8
+  L'D', // 9
+  L'Z', // A
+  L'X', // B
+  L'4', // C
+  L'R', // D
+  L'F', // E
+  L'v', // F
 };
-
-template <typename T, size_t Size>
-struct Stack {
-  size_t head = 0;
-  T data[Size];
-
-  T &push(const T &value) {
-    assert(this->head < Size);
-    return this->data[this->head++] = value;
-  }
-
-  T &pop() {
-    assert(this->head > 0);
-    return this->data[--this->head];
-  }
-};
-
-struct Cpu {
-  u8 game_memory[0xfff];
-  u32 screen_data[32][64];
-  u8 registers[16];
-  u16 address_i = 0;
-  u16 program_counter = 0x200;
-  Stack<u16, 32> stack; // NOTE(steven): Not sure how big the stack should be
-  u8 delay_timer;
-  u8 sound_timer;
-
-  Cpu() {
-    memcpy(&this->game_memory[0x50], font_data, sizeof(font_data));
-  }
-};
-
-u16 get_op(u8 *from) {
-  u16 op = *from;
-  op <<= 8;
-  op |= *(++from);
-  return op;
-}
-
-typedef void (*Op_Instruction)(Cpu *cpu, u16 op);
-
-void x0(Cpu *cpu, u16 op) {
-  switch (op & 0xff) {
-    // CLS
-    case 0xe0: {
-      memset(cpu->screen_data, 0, sizeof(cpu->screen_data));
-    } break;
-
-    // RET
-    case 0xee: {
-      cpu->program_counter = cpu->stack.pop();
-    } break;
-  }
-}
-
-// JP addr
-void x1NNN(Cpu *cpu, u16 op) {
-  const u16 nnn = op & 0x0fff;
-  cpu->program_counter = nnn;
-}
-
-// LD Vx, nn
-void x6XNN(Cpu *cpu, u16 op) {
-  const u8 x = (u8)(op >> 8) & 0x0f;
-  const u8 nn = (u8)op;
-  cpu->registers[x] = nn;
-}
-
-// ADD Vx, nn
-void x7XNN(Cpu *cpu, u16 op) {
-  const u8 x = (u8)(op >> 8) & 0x0f;
-  const u8 nn = (u8)op;
-  cpu->registers[x] += nn;
-}
-
-// LD I, addr
-void xANNN(Cpu *cpu, u16 op) {
-  const u16 nnn = op & 0x0fff;
-  cpu->address_i = nnn;
-}
-
-// DRW Vx, Vy, n
-void xDXYN(Cpu *cpu, u16 op) {
-  const u8 x = (u8)(op >> 8) & 0x0f;
-  const u8 xn = cpu->registers[x];
-
-  const u8 y = (u8)(op >> 4) & 0x0f;
-  const u8 yn = cpu->registers[y];
-
-  const u8 n = (u8)op & 0x0f;
-
-  for (u8 row = 0; row < n; row++) {
-    const u8 row_data = cpu->game_memory[cpu->address_i + row];
-    for (u8 column = 0; column < 8; column++) {
-      // TODO(steven): XOR pixels and set collision flag
-      u8 pixel = row_data & (0x80 >> column);
-      cpu->screen_data[yn + row][xn + column] = pixel > 0 ? 0xffffff : 0;
-    }
-  }
-}
-
-static bool should_close = false;
 
 LRESULT CALLBACK event_handler(
   HWND window_handle,
@@ -139,8 +39,15 @@ LRESULT CALLBACK event_handler(
 ) {
   INT result = 0;
   switch (message) {
+    case WM_CREATE: {
+      CREATESTRUCT *create_struct = (CREATESTRUCT *)l_param;
+			SetWindowLongPtr(window_handle, GWLP_USERDATA, (LONG_PTR)create_struct->lpCreateParams);
+    } break;
+
     case WM_CLOSE: {
-      should_close = true;
+      Cpu *cpu = (Cpu*)GetWindowLongPtr(window_handle, GWLP_USERDATA);
+      cpu->running = false;
+
       DestroyWindow(window_handle);
     } break;
 
@@ -152,6 +59,26 @@ LRESULT CALLBACK event_handler(
       if (w_param == VK_ESCAPE) {
         PostMessage(window_handle, WM_CLOSE, NULL, NULL);
       }
+
+      Cpu *cpu = (Cpu*)GetWindowLongPtr(window_handle, GWLP_USERDATA);
+      const WCHAR key = (WCHAR)w_param;
+
+      for (u8 i = 0; i < 0x10; i++) {
+        if (input_map[i] == key) {
+          cpu->input[i] = true;
+        }
+      }
+    } break;
+
+    case WM_KEYUP: {
+      Cpu *cpu = (Cpu*)GetWindowLongPtr(window_handle, GWLP_USERDATA);
+      const WCHAR key = (WCHAR)w_param;
+
+      for (u8 i = 0; i < 0x10; i++) {
+        if (input_map[i] == key) {
+          cpu->input[i] = false;
+        }
+      }
     } break;
 
     default: {
@@ -161,8 +88,8 @@ LRESULT CALLBACK event_handler(
   return result;
 }
 
-HWND create_window(HINSTANCE instance_handle, INT show_flag) {
-  const LPCWSTR class_name = L"8CHIP";
+HWND create_window(HINSTANCE instance_handle, INT show_flag, Cpu *cpu) {
+  const LPCWSTR class_name = L"CHIP8EmulatorWindowClass";
 
   WNDCLASSEX window_class = {};
   window_class.cbSize = sizeof(WNDCLASSEX);
@@ -175,7 +102,7 @@ HWND create_window(HINSTANCE instance_handle, INT show_flag) {
   const HWND window_handle = CreateWindowEx(
     0,
     class_name,
-    L"8Chip Emulator",
+    L"CHIP-8 Emulator",
     WS_POPUP | WS_VISIBLE,
     0,
     0,
@@ -185,7 +112,7 @@ HWND create_window(HINSTANCE instance_handle, INT show_flag) {
     NULL,
     NULL,
     instance_handle,
-    nullptr
+    cpu
   );
   assert(window_handle != NULL);
 
@@ -239,22 +166,36 @@ INT WINAPI wWinMain(
   PWSTR cmd_args,
   INT show_flags
 ) {
-  HWND window_handle = create_window(instance_handle, show_flags);
-  HDC device_context = GetDC(window_handle);
-
-  Cpu *cpu = new Cpu();
-
-  Op_Instruction instructions[0x10] = {};
+  Instruction instructions[0x10] = {};
   instructions[0x00] = &x0;
   instructions[0x01] = &x1NNN;
+  instructions[0x02] = &x2NNN;
+  instructions[0x03] = &x3XNN;
+  instructions[0x04] = &x4XNN;
+  instructions[0x05] = &x5XY0;
   instructions[0x06] = &x6XNN;
   instructions[0x07] = &x7XNN;
+  instructions[0x08] = &x8;
+  instructions[0x09] = &x9XY0;
   instructions[0x0a] = &xANNN;
+  instructions[0x0b] = &xBNNN;
+  instructions[0x0c] = &xCXNN;
   instructions[0x0d] = &xDXYN;
+  instructions[0x0e] = &xE;
+  instructions[0x0f] = &xF;
+
+  Cpu *cpu = new Cpu(instructions);
+
+  HWND window_handle = create_window(instance_handle, show_flags, cpu);
+  HDC device_context = GetDC(window_handle);
 
   FILE *file;
 
-  errno = fopen_s(&file, "./rom/IBM Logo.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/IBM Logo.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/pong.ch8", "rb");
+  errno = fopen_s(&file, "./rom/test_opcode.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/c8_test.ch8", "rb");
   assert(errno == 0);
 
   const u16 read_buffer_size = 0xfff - 0x200;
@@ -264,30 +205,53 @@ INT WINAPI wWinMain(
   fclose(file);
   assert(errno == 0);
 
+  HANDLE waitable_timer_handle = CreateWaitableTimer(NULL, TRUE, NULL);
+  assert(waitable_timer_handle != NULL);
+
+  LARGE_INTEGER frequency;
+  QueryPerformanceFrequency(&frequency);
+
+  const LONGLONG frame_time = TIMER_INTERVAL / SPEED;
+
   MSG message = {};
-  while (!should_close) {
+  while (cpu->running) {
+    LARGE_INTEGER begin;
+    QueryPerformanceCounter(&begin);
+
     while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE)) {
       TranslateMessage(&message);
       DispatchMessage(&message);
     }
 
-    u16 op = get_op(&cpu->game_memory[cpu->program_counter]);
-    cpu->program_counter += 2;
-
-    Op_Instruction instruction = instructions[(op & 0xf000) >> 12];    
-    assert(instruction != nullptr);
-
-    if (instruction != nullptr) {
-      instruction(cpu, op);
+    for (int i = 0; i < SIMULATIONS_PER_FRAME; i++) {
+      cpu->simulate();
     }
 
-    const bool screen_data_changed = (op & 0xf000) == 0xd000 || op == 0x00e0;
-    if (screen_data_changed) {
+    cpu->update_timers();
+
+    if (cpu->requires_repaint) {
       render(cpu, window_handle, device_context);
+      cpu->requires_repaint = false;
     }
 
-    if (cpu->program_counter >= 0xfff) {
-      break;
+    LARGE_INTEGER end;
+    QueryPerformanceCounter(&end);
+
+    LONGLONG difference = end.QuadPart - begin.QuadPart;
+    difference = (f64)difference / frequency.QuadPart * TIMER_INTERVAL;
+
+    LARGE_INTEGER wait_time;
+    wait_time.QuadPart = frame_time - difference;
+
+    if (wait_time.QuadPart > 0) {
+      // Inverse value to wait in relative time
+      wait_time.QuadPart = -wait_time.QuadPart; 
+
+      bool success = SetWaitableTimer(waitable_timer_handle, &wait_time, 0, NULL, NULL, FALSE);
+      assert(success);
+
+      success = WaitForSingleObject(waitable_timer_handle, INFINITE) == WAIT_OBJECT_0;
+      assert(success);  
     }
   }
 
