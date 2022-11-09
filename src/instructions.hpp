@@ -118,8 +118,10 @@ void x8(Cpu *cpu, u16 op) {
 
     // SHR Vx {, Vy}
     case 0x06: {
-      cpu->registers[0x0f] = yn & 0x01;
-      cpu->registers[x] = yn >> 1;
+      // cpu->registers[0x0f] = yn & 0x01;
+      // cpu->registers[x] = yn >> 1;
+      cpu->registers[0x0f] = xn & 0x01;
+      cpu->registers[x] = xn >> 1;
     } break;
 
     // SUBN Vx, Vy
@@ -130,8 +132,10 @@ void x8(Cpu *cpu, u16 op) {
 
     // SHL Vx {, Vy}
     case 0x0e: {
-      cpu->registers[0x0f] = (yn >> 7) & 0x01;
-      cpu->registers[x] = yn << 1;
+      // cpu->registers[0x0f] = (yn >> 7) & 0x01;
+      // cpu->registers[x] = yn << 1;
+      cpu->registers[0x0f] = (xn >> 7) & 0x01;
+      cpu->registers[x] = xn << 1;
     } break;
 
     default: assert(false);
@@ -230,6 +234,17 @@ void xF(Cpu *cpu, u16 op) {
     // LD Vx, DT
     case 0x07: {
       cpu->registers[x] = cpu->delay_timer;
+    } break;
+
+    // LD Vx, K
+    case 0x0a: {
+      for (u8 key = 0; key < 0x10; key++) {
+        if (cpu->input[key]) {
+          cpu->registers[x] = key;
+          return;
+        }
+      }
+      cpu->program_counter = (cpu->program_counter - 2) & 0x0fff;
     } break;
 
     // LD DT, Vx

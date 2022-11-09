@@ -3,14 +3,30 @@
 #include <errno.h>
 
 #include <Windows.h>
+#include <xaudio2.h>
+#include <comdef.h>
 
 #include "src/cpu.hpp"
 #include "src/instructions.hpp"
 #include "src/types.hpp"
 
 #define TIMER_INTERVAL 10000000
-#define SIMULATIONS_PER_FRAME 20
+#define SIMULATIONS_PER_FRAME 30
 #define SPEED 60
+
+#define LOG(x, ...) {                  \
+  WCHAR _buffer[500];                  \
+  swprintf_s(_buffer, x, __VA_ARGS__); \
+  OutputDebugString(_buffer);          \
+}
+
+#define ASSERT_HRESULT(result) {                                \
+  if (!SUCCEEDED(result)) {                                     \
+    _com_error _error(result);                                  \
+    LOG(L"HRESULT Error Message: %s\n", _error.ErrorMessage()); \
+    assert(SUCCEEDED(result));                                  \
+  }                                                             \
+}
 
 const WCHAR input_map[] = {
   L'x', // 0
@@ -41,7 +57,7 @@ LRESULT CALLBACK event_handler(
   switch (message) {
     case WM_CREATE: {
       CREATESTRUCT *create_struct = (CREATESTRUCT *)l_param;
-			SetWindowLongPtr(window_handle, GWLP_USERDATA, (LONG_PTR)create_struct->lpCreateParams);
+      SetWindowLongPtr(window_handle, GWLP_USERDATA, (LONG_PTR)create_struct->lpCreateParams);
     } break;
 
     case WM_CLOSE: {
@@ -166,6 +182,42 @@ INT WINAPI wWinMain(
   PWSTR cmd_args,
   INT show_flags
 ) {
+  HRESULT result = CoInitialize(NULL);
+  assert(SUCCEEDED(result));
+
+  IXAudio2 *xaudio = nullptr;
+  result = XAudio2Create(&xaudio, 0, XAUDIO2_DEFAULT_PROCESSOR);
+  ASSERT_HRESULT(result)
+
+  IXAudio2MasteringVoice *master_voice = nullptr;
+  result = xaudio->CreateMasteringVoice(&master_voice);
+  ASSERT_HRESULT(result)
+
+  WAVEFORMATEX wave_format = {};
+  wave_format.wFormatTag = WAVE_FORMAT_PCM;
+  wave_format.nChannels = 1;
+  wave_format.nSamplesPerSec = 48100;
+  wave_format.nAvgBytesPerSec = 48100;
+  wave_format.nBlockAlign = 1;
+  wave_format.wBitsPerSample = 8;
+  wave_format.cbSize = 0;
+
+  IXAudio2SourceVoice *voice = nullptr;
+  result = xaudio->CreateSourceVoice(&voice, (WAVEFORMATEX*)&wave_format);
+  ASSERT_HRESULT(result)
+
+  u8 audio_data[0x100];
+
+  XAUDIO2_BUFFER audio_buffer = {};
+  audio_buffer.AudioBytes = 0x100;
+  audio_buffer.pAudioData = audio_data;
+  audio_buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+
+  result = voice->SubmitSourceBuffer(&audio_buffer);
+  ASSERT_HRESULT(result)
+
+  bool audio_playing = false;
+
   Instruction instructions[0x10] = {};
   instructions[0x00] = &x0;
   instructions[0x01] = &x1NNN;
@@ -192,9 +244,9 @@ INT WINAPI wWinMain(
   FILE *file;
 
   // errno = fopen_s(&file, "./rom/IBM Logo.ch8", "rb");
-  // errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
+  errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
   // errno = fopen_s(&file, "./rom/pong.ch8", "rb");
-  errno = fopen_s(&file, "./rom/test_opcode.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/test_opcode.ch8", "rb");
   // errno = fopen_s(&file, "./rom/c8_test.ch8", "rb");
   assert(errno == 0);
 
@@ -229,6 +281,14 @@ INT WINAPI wWinMain(
 
     cpu->update_timers();
 
+    if (!audio_playing && cpu->sound_timer > 0) {
+      voice->Start(0);
+      audio_playing = true;
+    } else if (audio_playing && cpu->sound_timer == 0) {
+      voice->Stop();
+      audio_playing = false;
+    }
+
     if (cpu->requires_repaint) {
       render(cpu, window_handle, device_context);
       cpu->requires_repaint = false;
@@ -254,6 +314,8 @@ INT WINAPI wWinMain(
       assert(success);  
     }
   }
+
+  xaudio->Release();
 
   ReleaseDC(window_handle, device_context);
 
