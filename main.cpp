@@ -11,7 +11,7 @@
 #include "src/types.hpp"
 
 #define TIMER_INTERVAL 10000000
-#define SIMULATIONS_PER_FRAME 30
+#define SIMULATIONS_PER_FRAME 20
 #define SPEED 60
 
 #define LOG(x, ...) {                  \
@@ -244,8 +244,8 @@ INT WINAPI wWinMain(
   FILE *file;
 
   // errno = fopen_s(&file, "./rom/IBM Logo.ch8", "rb");
-  errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
-  // errno = fopen_s(&file, "./rom/pong.ch8", "rb");
+  // errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
+  errno = fopen_s(&file, "./rom/pong.ch8", "rb");
   // errno = fopen_s(&file, "./rom/test_opcode.ch8", "rb");
   // errno = fopen_s(&file, "./rom/c8_test.ch8", "rb");
   assert(errno == 0);
