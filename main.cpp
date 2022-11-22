@@ -241,13 +241,24 @@ INT WINAPI wWinMain(
   HWND window_handle = create_window(instance_handle, show_flags, cpu);
   HDC device_context = GetDC(window_handle);
 
-  FILE *file;
+  WCHAR file_name[260] = {};
+  file_name[0] = '\0';
 
-  // errno = fopen_s(&file, "./rom/IBM Logo.ch8", "rb");
-  // errno = fopen_s(&file, "./rom/Space Invaders.ch8", "rb");
-  errno = fopen_s(&file, "./rom/pong.ch8", "rb");
-  // errno = fopen_s(&file, "./rom/test_opcode.ch8", "rb");
-  // errno = fopen_s(&file, "./rom/c8_test.ch8", "rb");
+  OPENFILENAME open_file_name = {};
+  open_file_name.lStructSize = sizeof(OPENFILENAME);
+  open_file_name.hwndOwner = window_handle;
+  open_file_name.hInstance = instance_handle;
+  open_file_name.lpstrTitle = L"Open ROM";
+  open_file_name.lpstrFile = file_name;
+  open_file_name.nMaxFile = sizeof(file_name);
+
+  const BOOL file_pick_succeeded = GetOpenFileName(&open_file_name);
+  if (!file_pick_succeeded) {
+    return 1;
+  }
+
+  FILE *file;
+  errno = _wfopen_s(&file, file_name, L"rb");
   assert(errno == 0);
 
   const u16 read_buffer_size = 0xfff - 0x200;

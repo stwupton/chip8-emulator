@@ -12,10 +12,14 @@ project 'chip8-emulator'
     defines { 'NDEBUG' }
     optimize 'On'
 
+  filter 'configurations:Debug'
+    symbols 'Full'
+    optimize 'Debug'
+
   filter 'platforms:Win64'
     system 'Windows'
     architecture 'x86_64'
     
   filter 'system:Windows'
     defines { 'WIN32', 'UNICODE' }
-    links { 'user32', 'gdi32', 'Xaudio2', 'ole32' }
+    links { 'user32', 'gdi32', 'Xaudio2', 'ole32', 'comdlg32' }
